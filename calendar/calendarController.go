@@ -7,11 +7,12 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/labstack/echo/v4"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 )
 
-func GetDate(w http.ResponseWriter, r *http.Request) {
-	span, _ := tracer.StartSpanFromContext(r.Context(), "GetDate")
+func GetDate(c echo.Context) error {
+	span, _ := tracer.StartSpanFromContext(c.Request().Context(), "GetDate")
 	defer span.Finish()
 
 	val := rand.Intn(365)
@@ -22,6 +23,5 @@ func GetDate(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Println(string(ranDate))
 
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(ranDate)
+	return c.JSONBlob(http.StatusOK, ranDate)
 }

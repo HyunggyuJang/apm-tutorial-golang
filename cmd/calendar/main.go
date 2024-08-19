@@ -2,15 +2,14 @@ package main
 
 import (
 	"log"
-	"net/http"
 	"os"
 	"time"
 
 	"github.com/datadog/apm_tutorial_golang/calendar"
 
-	"github.com/go-chi/chi"
-	"github.com/go-chi/chi/middleware"
-	chitrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/go-chi/chi"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
+	echotrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/labstack/echo.v4"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 )
 
@@ -20,15 +19,15 @@ func main() {
 
 	log.Printf("Starting from port 9090")
 
-	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-	r.Use(chitrace.Middleware(chitrace.WithServiceName("calendar")))
+	e := echo.New()
+	e.Use(middleware.Logger())
+	e.Use(echotrace.Middleware(echotrace.WithServiceName("calendar")))
 
-	r.Get("/calendar", calendar.GetDate)
-	r.Post("/calendar/quit", func(rw http.ResponseWriter, r *http.Request) {
+	e.GET("/calendar", calendar.GetDate)
+	e.POST("/calendar/quit", func(c echo.Context) error {
 		time.AfterFunc(1*time.Second, func() { os.Exit(0) })
-		rw.Write([]byte("Goodbye\n"))
+		return c.String(200, "Goodbye\n")
 	})
 
-	log.Fatal(http.ListenAndServe(":9090", r))
+	log.Fatal(e.Start(":9090"))
 }

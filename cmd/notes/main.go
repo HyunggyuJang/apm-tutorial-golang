@@ -10,13 +10,13 @@ import (
 
 	"go.uber.org/zap"
 	sqltrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/database/sql"
-	chitrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/go-chi/chi"
+	echotrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/labstack/echo.v4"
 	httptrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/net/http"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 
 	"github.com/datadog/apm_tutorial_golang/notes"
-	"github.com/go-chi/chi"
-	"github.com/go-chi/chi/middleware"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/mattn/go-sqlite3"
 )
 
@@ -53,12 +53,13 @@ func main() {
 		Logic:  logic,
 	}
 
-	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-	r.Use(chitrace.Middleware(chitrace.WithServiceName("notes")))
-	r.Mount("/", nr.Register())
+	e := echo.New()
+	e.Use(middleware.Logger())
+	e.Use(echotrace.Middleware(echotrace.WithServiceName("notes")))
 
-	log.Fatal(http.ListenAndServe(":8080", r))
+	nr.Register(e) // Adjusted to work with Echo
+
+	log.Fatal(e.Start(":8080"))
 }
 
 func setupDB(logger *zap.Logger) *sql.DB {

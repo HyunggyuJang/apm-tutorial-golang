@@ -2,7 +2,6 @@ package notes
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"os"
 	"strings"
@@ -11,7 +10,7 @@ import (
 	"go.uber.org/zap"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 
-	"github.com/go-chi/chi"
+	"github.com/labstack/echo/v4"
 )
 
 type Logic interface {
@@ -27,32 +26,29 @@ type Router struct {
 	Logic  Logic
 }
 
-func (nr *Router) Register() chi.Router {
-	r := chi.NewRouter()
-	r.Get("/notes", makeSpanMiddleware("GetAllNotes", nr.GetAllNotes))               // GET /notes
-	r.Post("/notes", makeSpanMiddleware("CreateNote", nr.CreateNote))                // POST /notes
-	r.Get("/notes/{noteID}", makeSpanMiddleware("GetNote", nr.GetNoteByID))          // GET /notes/123
-	r.Put("/notes/{noteID}", makeSpanMiddleware("UpdateNote", nr.UpdateNoteByID))    // PUT /notes/123
-	r.Delete("/notes/{noteID}", makeSpanMiddleware("DeleteNote", nr.DeleteNoteByID)) // DELETE /notes/123
+func (nr *Router) Register(e *echo.Echo) {
+	e.GET("/notes", nr.makeSpanMiddleware("GetAllNotes", nr.GetAllNotes))               // GET /notes
+	e.POST("/notes", nr.makeSpanMiddleware("CreateNote", nr.CreateNote))                // POST /notes
+	e.GET("/notes/:noteID", nr.makeSpanMiddleware("GetNote", nr.GetNoteByID))           // GET /notes/123
+	e.PUT("/notes/:noteID", nr.makeSpanMiddleware("UpdateNote", nr.UpdateNoteByID))     // PUT /notes/123
+	e.DELETE("/notes/:noteID", nr.makeSpanMiddleware("DeleteNote", nr.DeleteNoteByID))  // DELETE /notes/123
 
-	r.Post("/notes/quit", func(rw http.ResponseWriter, r *http.Request) {
+	e.POST("/notes/quit", func(c echo.Context) error {
 		time.AfterFunc(1*time.Second, func() { os.Exit(0) })
-		rw.Write([]byte("Goodbye\n"))
-	}) //Quits program
-
-	return r
+		return c.String(http.StatusOK, "Goodbye\n")
+	}) // Quits program
 }
 
-func makeSpanMiddleware(name string, h http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		span, ctx := tracer.StartSpanFromContext(r.Context(), name)
-		r = r.WithContext(ctx)
+func (nr *Router) makeSpanMiddleware(name string, h echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		span, ctx := tracer.StartSpanFromContext(c.Request().Context(), name)
 		defer span.Finish()
-		h.ServeHTTP(w, r)
+		c.SetRequest(c.Request().WithContext(ctx))
+		return h(c)
 	}
 }
 
-func reportError(err error, category string, w http.ResponseWriter) {
+func reportError(err error, category string, c echo.Context) error {
 	msg := struct {
 		Category string `json:"category"`
 		Message  string `json:"message"`
@@ -61,12 +57,10 @@ func reportError(err error, category string, w http.ResponseWriter) {
 		Message:  err.Error(),
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusInternalServerError)
-	json.NewEncoder(w).Encode(msg)
+	return c.JSON(http.StatusInternalServerError, msg)
 }
 
-func reportInputError(message string, w http.ResponseWriter) {
+func reportInputError(message string, c echo.Context) error {
 	msg := struct {
 		Category string `json:"category"`
 		Message  string `json:"message"`
@@ -75,110 +69,68 @@ func reportInputError(message string, w http.ResponseWriter) {
 		Message:  "invalid input",
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusInternalServerError)
-	json.NewEncoder(w).Encode(msg)
+	return c.JSON(http.StatusBadRequest, msg)
 }
 
-func (nr *Router) GetAllNotes(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+func (nr *Router) GetAllNotes(c echo.Context) error {
+	ctx := c.Request().Context()
 	notes, err := nr.Logic.GetAllNotes(ctx)
 	if err != nil {
-		reportError(err, "GetAllNotes", w)
-		return
+		return reportError(err, "GetAllNotes", c)
 	}
 
 	doLongRunningProcess(ctx)
 	anotherProcess(ctx)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(w).Encode(notes)
-	if err != nil {
-		reportError(err, "GetAllNotes-Encode", w)
-		return
-	}
+	return c.JSON(http.StatusOK, notes)
 }
 
-func (nr *Router) GetNoteByID(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	id := chi.URLParam(r, "noteID")
+func (nr *Router) GetNoteByID(c echo.Context) error {
+	ctx := c.Request().Context()
+	id := c.Param("noteID")
 	if strings.TrimSpace(id) == "" {
-		reportInputError("noteID not specified", w)
-		return
+		return reportInputError("noteID not specified", c)
 	}
 	note, err := nr.Logic.GetNote(ctx, id)
 	if err != nil {
-		reportError(err, "GetNoteByID", w)
-		return
+		return reportError(err, "GetNoteByID", c)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(w).Encode(note)
-	if err != nil {
-		reportError(err, "GetNotes-Encode", w)
-		return
-	}
+	return c.JSON(http.StatusOK, note)
 }
 
-func (nr *Router) CreateNote(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	desc := r.URL.Query().Get("desc")
-	addDate := false
-
-	if strings.EqualFold(r.URL.Query().Get("add_date"), "y") {
-		addDate = true
-	}
+func (nr *Router) CreateNote(c echo.Context) error {
+	ctx := c.Request().Context()
+	desc := c.QueryParam("desc")
+	addDate := strings.EqualFold(c.QueryParam("add_date"), "y")
 
 	note, err := nr.Logic.CreateNote(ctx, desc, addDate)
 	if err != nil {
-		reportError(err, "CreateNote", w)
-		return
+		return reportError(err, "CreateNote", c)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	err = json.NewEncoder(w).Encode(note)
-	if err != nil {
-		reportError(err, "CreateNote-Encode", w)
-		return
-	}
+	return c.JSON(http.StatusCreated, note)
 }
 
-func (nr *Router) UpdateNoteByID(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	id := chi.URLParam(r, "noteID")
-	desc := r.URL.Query().Get("desc")
+func (nr *Router) UpdateNoteByID(c echo.Context) error {
+	ctx := c.Request().Context()
+	id := c.Param("noteID")
+	desc := c.QueryParam("desc")
 	note, err := nr.Logic.UpdateNote(ctx, id, desc)
 	if err != nil {
-		reportError(err, "UpdateNoteByID", w)
-		return
+		return reportError(err, "UpdateNoteByID", c)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(w).Encode(note)
-	if err != nil {
-		reportError(err, "UpdateNote-Encode", w)
-		return
-	}
+	return c.JSON(http.StatusOK, note)
 }
 
-func (nr *Router) DeleteNoteByID(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	id := chi.URLParam(r, "noteID")
+func (nr *Router) DeleteNoteByID(c echo.Context) error {
+	ctx := c.Request().Context()
+	id := c.Param("noteID")
 	err := nr.Logic.DeleteNote(ctx, id)
 	if err != nil {
-		reportError(err, "DeleteNoteByID", w)
-		return
+		return reportError(err, "DeleteNoteByID", c)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(w).Encode("Deleted")
-	if err != nil {
-		reportError(err, "DeleteNote-Encode", w)
-		return
-	}
+	return c.JSON(http.StatusOK, "Deleted")
 }
