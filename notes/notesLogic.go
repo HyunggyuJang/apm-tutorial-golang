@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/sirupsen/logrus"
 	"go.uber.org/zap"
 )
 
@@ -21,6 +22,7 @@ type LogicImpl struct {
 func (li *LogicImpl) GetAllNotes(ctx context.Context) ([]Note, error) {
 	rows, err := li.DB.QueryContext(ctx, "SELECT * FROM notes;")
 	if err != nil {
+		logrus.WithContext(ctx).Errorf("query failed: %w", err)
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
 

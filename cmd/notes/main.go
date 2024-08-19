@@ -18,11 +18,20 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/mattn/go-sqlite3"
+	"github.com/sirupsen/logrus"
+
+	dd_logrus "gopkg.in/DataDog/dd-trace-go.v1/contrib/sirupsen/logrus"
 )
 
 func main() {
 	tracer.Start(tracer.WithRuntimeMetrics())
 	defer tracer.Stop()
+
+    // Optional: Change log format to use JSON (Cf. Go Log Collection)
+    logrus.SetFormatter(&logrus.JSONFormatter{})
+
+    // Add Datadog context log hook
+    logrus.AddHook(&dd_logrus.DDContextLogHook{}) 
 
 	logger, _ := zap.NewDevelopment()
 	logger.Debug("Starting from port 8080")
