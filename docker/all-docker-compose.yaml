@@ -50,6 +50,7 @@ services:
     pid: host
     environment:
       - DD_API_KEY=<DD_API_KEY_HERE>
+      - DD_SITE=us5.datadoghq.com
       - DD_APM_ENABLED=true
       - DD_APM_NON_LOCAL_TRAFFIC=true
     volumes:
