@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	tracer.Start()
+	tracer.Start(tracer.WithRuntimeMetrics())
 	defer tracer.Stop()
 
 	log.Printf("Starting from port 9090")

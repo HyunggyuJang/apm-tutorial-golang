@@ -21,7 +21,7 @@ import (
 )
 
 func main() {
-	tracer.Start()
+	tracer.Start(tracer.WithRuntimeMetrics())
 	defer tracer.Stop()
 
 	logger, _ := zap.NewDevelopment()
