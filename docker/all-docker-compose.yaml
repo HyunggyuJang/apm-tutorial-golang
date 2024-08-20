@@ -24,8 +24,10 @@ services:
       - SERVICE=notes
       - VERSION=0.0.1
     depends_on:
-      - calendar
-      - datadog-agent
+      calendar:
+        condition: service_started
+      datadog-agent:
+        condition: service_healthy
 
   calendar:
     container_name: calendar
@@ -45,7 +47,9 @@ services:
     ports:
       - 9090:9090
     depends_on:
-      - datadog-agent
+      datadog-agent:
+        condition: service_healthy
+
       
   datadog-agent:
     container_name: datadog-agent
@@ -64,3 +68,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /opt/datadog-agent/run:/opt/datadog-agent/run:rw
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8126/info"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
