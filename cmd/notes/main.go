@@ -1,39 +1,37 @@
 package main
 
 import (
+	"context"
 	"database/sql"
-	"log"
+	"fmt"
 	"net/http"
 	"os"
+	"runtime"
 
-	"fmt"
-
+	log "github.com/datadog/apm_tutorial_golang/logger"
+	tracing "github.com/datadog/apm_tutorial_golang/tracer"
 	"go.uber.org/zap"
+
 	sqltrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/database/sql"
 	echotrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/labstack/echo.v4"
 	httptrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/net/http"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 
+	"github.com/datadog/apm_tutorial_golang/middlewares"
 	"github.com/datadog/apm_tutorial_golang/notes"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"github.com/mattn/go-sqlite3"
-	"github.com/sirupsen/logrus"
-
-	dd_logrus "gopkg.in/DataDog/dd-trace-go.v1/contrib/sirupsen/logrus"
 )
 
 func main() {
 	tracer.Start(tracer.WithRuntimeMetrics())
 	defer tracer.Stop()
 
-    // Optional: Change log format to use JSON (Cf. Go Log Collection)
-    logrus.SetFormatter(&logrus.JSONFormatter{})
-
-    // Add Datadog context log hook
-    logrus.AddHook(&dd_logrus.DDContextLogHook{}) 
-
-	logger, _ := zap.NewDevelopment()
+	logger := log.New()
+	ctx := context.Background()
+	_, ctx = tracer.StartSpanFromContext(ctx, getCurrentFunctionName())
+	logger = tracing.WithTrace(ctx, logger)
+	logger.Debug("Starting notes service")
 	logger.Debug("Starting from port 8080")
 
 	db := setupDB(logger)
@@ -63,12 +61,12 @@ func main() {
 	}
 
 	e := echo.New()
-	e.Use(middleware.Logger())
 	e.Use(echotrace.Middleware(echotrace.WithServiceName("notes")))
+	e.Use(middlewares.EchoLogger(logger))
 
 	nr.Register(e) // Adjusted to work with Echo
 
-	log.Fatal(e.Start(":8080"))
+	logger.Fatal("Error starting server", zap.Error(e.Start(":8080")))
 }
 
 func setupDB(logger *zap.Logger) *sql.DB {
@@ -85,4 +83,16 @@ func setupDB(logger *zap.Logger) *sql.DB {
 		logger.Fatal("error creating schema", zap.Error(err))
 	}
 	return db
+}
+
+func getCurrentFunctionName() string {
+    pc, _, _, ok := runtime.Caller(1)
+    if !ok {
+        return "unknown"
+    }
+    fn := runtime.FuncForPC(pc)
+    if fn == nil {
+        return "unknown"
+    }
+    return fn.Name()
 }

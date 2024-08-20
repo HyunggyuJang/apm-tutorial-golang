@@ -11,15 +11,18 @@ services:
     ports:
       - 8080:8080
     labels:
-      - com.datadoghq.tags.service="notes"
-      - com.datadoghq.tags.env="dev"
-      - com.datadoghq.tags.version="0.0.1"
+      - com.datadoghq.tags.service=notes
+      - com.datadoghq.tags.env=dev
+      - com.datadoghq.tags.version=0.0.1
     environment:
       - DD_SERVICE=notes
       - DD_ENV=dev
       - DD_VERSION=0.0.1
       - DD_AGENT_HOST=datadog-agent
       - CALENDAR_HOST=calendar
+      - ENV=dev
+      - SERVICE=notes
+      - VERSION=0.0.1
     depends_on:
       - calendar
       - datadog-agent
@@ -31,9 +34,9 @@ services:
       context: ../
       dockerfile: dockerfile.calendar
     labels:
-       - com.datadoghq.tags.service="calendar"
-       - com.datadoghq.tags.env="dev"
-       - com.datadoghq.tags.version="0.0.1"
+       - com.datadoghq.tags.service=calendar
+       - com.datadoghq.tags.env=dev
+       - com.datadoghq.tags.version=0.0.1
     environment:
        - DD_SERVICE=calendar
        - DD_ENV=dev
@@ -59,6 +62,7 @@ services:
       - DD_CONTAINER_EXCLUDE=image:datadoghq/agent:*
     ports:
       - 8125:8125/udp
+      - 8126:8126/tcp # pacify startup error
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/containers:/var/lib/docker/containers:ro

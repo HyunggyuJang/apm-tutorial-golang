@@ -12,6 +12,11 @@ RUN go mod download
 COPY notes notes/
 COPY cmd/notes cmd/notes/ 
 
+#Copy dependencies
+COPY tracer tracer/
+COPY logger logger/
+COPY middlewares middlewares/
+
 #Clean and build
 RUN go clean
 RUN go build -o cmd/notes/notes ./cmd/notes
