@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -49,7 +50,7 @@ func (li *LogicImpl) GetNote(ctx context.Context, id string) (Note, error) {
 	note := Note{}
 	err := row.Scan(&note.ID, &note.Description)
 	if err != nil {
-		return Note{}, fmt.Errorf("scan failed: %w", err)
+		return Note{}, errors.Wrap(err, "scan failed")
 	}
 
 	return note, nil
